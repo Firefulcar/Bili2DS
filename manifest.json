@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "Bili2DS",
+  "version": "1.1.0",
+  "description": "Extract Bilibili video subtitles (with ASR fallback) and send to DeepSeek chat for AI-powered summarization — no API key required.",
+  "icons": {
+    "16": "DSloli2.png",
+    "48": "DSloli2.png",
+    "128": "DSloli2.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.bilibili.com/video/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://chat.deepseek.com/*"],
+      "js": ["deepseek.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "clipboardWrite",
+    "storage",
+    "unlimitedStorage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.bilivideo.com/*",
+    "*://*.hdslb.com/*",
+    "*://*.bilibili.com/*",
+    "*://api.deepgram.com/*"
+  ],
+  "action": {
+    "default_title": "B站视频·DeepSeek总结 — 设置"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["page-script.js", "DSloli2.png"],
+      "matches": ["*://*.bilibili.com/*"]
+    }
+  ]
+}

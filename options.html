@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B站视频·DS问询总结助手 — 设置</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --bg: #f5f5f9;
+    --surface: #fff;
+    --border: #e4e4ec;
+    --text: #1a1a2e;
+    --text-secondary: #6b6b80;
+    --text-muted: #9999ad;
+    --accent: #5b5fef;
+    --accent-hover: #4a4edb;
+    --accent-light: #f0f0ff;
+    --bili-pink: #fb7299;
+    --danger: #e5484d;
+    --danger-bg: #fff5f5;
+    --success: #30a46c;
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --ui-offset: 70px;
+}
+
+body {
+    background: var(--bg);
+    background-image:
+        radial-gradient(ellipse at 15% 50%, rgba(91,95,239,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse at 85% 50%, rgba(251,114,153,0.03) 0%, transparent 60%);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 17px;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    -webkit-font-smoothing: antialiased;
+    overflow-y: scroll;
+    overflow-x: hidden;
+}
+
+.wrapper {
+    display: flex;
+    align-items: flex-start;
+    min-height: 100vh;
+}
+
+.character {
+    height: 100vh;
+    object-fit: contain;
+    object-position: left center;
+    pointer-events: none;
+    opacity: 0.92;
+    position: sticky;
+    top: 0;
+    flex-shrink: 0;
+    filter: drop-shadow(0 0 60px rgba(91,95,239,0.06));
+    transition: opacity 0.5s;
+}
+.character:hover { opacity: 1; }
+
+/* 小屏幕隐藏人物 */
+@media (max-width: 1200px) {
+    .character { display: none; }
+}
+
+.app {
+    display: flex;
+    width: 1080px;
+    min-height: 100vh;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+    width: 270px;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    padding: 40px 0 28px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    border-right: 1px solid var(--border);
+    background: rgba(255,255,255,0.5);
+}
+.sidebar-brand {
+    padding: 0 28px 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+}
+.sidebar-brand h1 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.3;
+    color: var(--bili-pink);
+}
+.sidebar-brand .ver {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-top: 6px;
+    display: block;
+}
+
+.sidebar-nav { flex: 1; padding: 12px 20px; }
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.25,0.1,0.25,1);
+    text-decoration: none;
+    margin-bottom: 4px;
+    position: relative;
+}
+.nav-item:hover {
+    background: rgba(91,95,239,0.05);
+    color: var(--text);
+    transform: translateX(2px);
+}
+.nav-item--active {
+    background: var(--accent-light);
+    color: var(--accent);
+    font-weight: 600;
+    transform: none;
+}
+.nav-item--active::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 20px;
+    border-radius: 2px;
+    background: var(--accent);
+}
+
+.sidebar-footer {
+    padding: 18px 28px 0;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+.status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-muted);
+    transition: background 0.3s;
+}
+.status-dot--on {
+    background: var(--success);
+    animation: dotPulse 2s ease-in-out infinite;
+}
+@keyframes dotPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(48,164,108,0.4); }
+    50%      { box-shadow: 0 0 0 7px rgba(48,164,108,0); }
+}
+
+/* ── Main ── */
+.main {
+    flex: 1;
+    min-width: 0;
+    padding: 40px 56px 80px;
+    overflow-x: hidden;
+    background: var(--surface);
+}
+
+/* ── Section ── */
+.section { width: 100%; }
+.js-section {
+    display: none;
+    width: 100%;
+    animation: sectionEnter 0.3s cubic-bezier(0.22,0.61,0.36,1) both;
+}
+.js-section--active { display: block; }
+@keyframes sectionEnter {
+    from { opacity: 0; transform: translateY(6px); }
+}
+
+.section-heading {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 32px;
+    letter-spacing: -0.02em;
+}
+
+/* ── Form ── */
+.form-group { margin-bottom: 22px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-label {
+    display: block;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+}
+.help {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.6;
+}
+.help a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.help a:hover { text-decoration: underline; }
+.help code {
+    background: var(--accent-light);
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--accent);
+    font-family: "SF Mono", "Consolas", "Menlo", monospace;
+}
+
+/* ── Inputs ── */
+input[type="password"], input[type="text"], textarea {
+    width: 100%;
+    padding: 13px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-family: var(--font);
+    color: var(--text);
+    background: #fafafd;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+input:hover, textarea:hover { border-color: #ceced8; }
+input:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(91,95,239,0.10);
+    background: #fff;
+    outline: none;
+}
+textarea { resize: vertical; min-height: 96px; line-height: 1.6; }
+.input-row { display: flex; gap: 8px; }
+.input-row input { flex: 1; }
+
+/* ── Buttons ── */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 11px 22px;
+    border-radius: var(--radius-sm);
+    font-size: 16px;
+    font-weight: 500;
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-family: var(--font);
+    transition: all 0.15s cubic-bezier(0.25,0.1,0.25,1);
+    outline: none;
+    white-space: nowrap;
+}
+.btn:active { transform: scale(0.965); }
+.btn-primary { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(91,95,239,0.2); }
+.btn-primary:hover { background: var(--accent-hover); box-shadow: 0 4px 16px rgba(91,95,239,0.32); transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0) scale(0.965); }
+.btn-secondary { background: var(--surface); color: var(--text); border-color: var(--border); }
+.btn-secondary:hover { background: #f8f8fc; border-color: #ceced8; }
+.btn-danger { background: var(--surface); color: var(--danger); border-color: #f5cdce; }
+.btn-danger:hover { background: var(--danger-bg); border-color: #e5484d; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+.btn-group { display: flex; gap: 8px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+
+/* ── Toggle ── */
+.toggle {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 15px; font-weight: 500; color: var(--text-secondary);
+    user-select: none; white-space: nowrap; padding: 4px 0;
+}
+.toggle input { display: none; }
+.toggle__track {
+    width: 42px; height: 25px; border-radius: 13px; background: #d1d1db;
+    position: relative; transition: background 0.25s cubic-bezier(0.34,1.56,0.64,1); flex-shrink: 0;
+}
+.toggle__track::after {
+    content: ''; position: absolute; top: 3px; left: 3px; width: 19px; height: 19px;
+    border-radius: 50%; background: #fff;
+    transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+.toggle input:checked + .toggle__track { background: var(--accent); }
+.toggle input:checked + .toggle__track::after { transform: translateX(17px); }
+
+/* ── Status message ── */
+.status-msg {
+    font-size: 14px; font-weight: 500; margin-left: 6px;
+    opacity: 0; transition: opacity 0.2s;
+}
+.status-msg--show { opacity: 1; }
+.status-msg--ok { color: var(--success); }
+.status-msg--err { color: var(--danger); }
+
+/* ── Docs ── */
+.doc-section { font-size: 16px; color: var(--text-secondary); line-height: 1.75; }
+.doc-section h3 { font-size: 17px; font-weight: 600; color: var(--text); margin: 24px 0 12px; }
+.doc-section h3:first-child { margin-top: 0; }
+.doc-section ul { padding-left: 24px; margin-bottom: 14px; }
+.doc-section li { margin-bottom: 7px; }
+.doc-section table {
+    width: 100%; table-layout: fixed; border-collapse: collapse; margin: 12px 0 18px; font-size: 15px;
+}
+.doc-section th, .doc-section td { border: 1px solid var(--border); padding: 11px 16px; text-align: left; word-break: break-word; }
+.doc-section th { background: #fafafd; font-weight: 600; color: var(--text); font-size: 15px; }
+.doc-section td:first-child { width: 32%; }
+.doc-section code {
+    background: var(--accent-light); padding: 2px 6px; border-radius: 4px;
+    font-size: 14px; font-family: "SF Mono", "Consolas", "Menlo", monospace;
+}
+.doc-section strong { color: var(--text); }
+
+/* ── About ── */
+.about-section { font-size: 16px; }
+.about-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 0;
+}
+.about-row + .about-row { border-top: 1px solid var(--border); }
+.about-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    width: 60px;
+    flex-shrink: 0;
+}
+.about-value { font-size: 16px; color: var(--text-secondary); }
+.about-link {
+    font-size: 16px;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.about-link:hover { text-decoration: underline; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+<div class="app">
+
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <h1>B站视频 · DS 问询总结助手</h1>
+            <span class="ver">v1.1.0</span>
+        </div>
+        <div class="sidebar-nav">
+            <a class="nav-item nav-item--active" data-section="api" href="#api">语音识别</a>
+            <a class="nav-item" data-section="prompts" href="#prompts">提示词设置</a>
+            <a class="nav-item" data-section="docs" href="#docs">操作指南</a>
+            <a class="nav-item" data-section="about" href="#about">关于</a>
+        </div>
+        <div class="sidebar-footer" id="status-bar">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">加载中...</span>
+        </div>
+    </nav>
+
+    <main class="main">
+
+        <div class="section js-section js-section--active" id="section-api">
+            <div class="section-heading">语音识别</div>
+            <div class="form-group">
+                <label class="form-label" for="api-key">Deepgram API Key</label>
+                <div class="input-row">
+                    <input type="password" id="api-key" placeholder="输入 Deepgram API Key..." autocomplete="off">
+                    <button class="btn btn-secondary" id="btn-toggle" title="显示">&#x1f441;</button>
+                </div>
+                <div class="help">
+                    <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener">注册 Deepgram</a> 获取 Key，新用户 $200 免费额度（约 400 小时音频）。Key 仅保存在本地浏览器。
+                </div>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-primary" id="btn-save-key">保存</button>
+                <button class="btn btn-secondary" id="btn-test-key">测试连接</button>
+                <button class="btn btn-danger" id="btn-clear-key">清除</button>
+                <span class="status-msg" id="status-key"></span>
+            </div>
+            <div class="help" style="margin-top:16px;padding:12px 16px;background:#fffbe6;border-radius:8px;border:1px solid #ffe58f;color:#8c6e00;">
+                ⚠️ <strong>这是可选配置。</strong>只有当 B 站官方未提供 AI 字幕时，才会自动启用自备的 ASR（语音识别）作为后备方案。<strong>绝大多数视频已有官方字幕，无需配置此项。</strong>
+            </div>
+        </div>
+
+        <div class="section js-section" id="section-prompts">
+            <div class="section-heading">提示词设置</div>
+            <div class="help" style="margin-bottom:24px">
+                用 <code>{{text}}</code> 代表字幕内容，保存后即时生效。右侧开关控制是否复用同一对话窗口（固定窗口）。
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="prompt-retell">复述模式</label>
+                <textarea id="prompt-retell"></textarea>
+            </div>
+            <div class="btn-group" style="margin-bottom:28px">
+                <button class="btn btn-primary" id="btn-save-retell">保存</button>
+                <button class="btn btn-secondary" id="btn-reset-retell">恢复默认</button>
+                <label class="toggle" title="开启后多个视频复用同一 DS 对话">
+                    <input type="checkbox" id="toggle-retell">
+                    <span class="toggle__track"></span>
+                    <span>固定窗口</span>
+                </label>
+                <span class="status-msg" id="status-retell"></span>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="prompt-continue">快速模式</label>
+                <textarea id="prompt-continue"></textarea>
+            </div>
+            <div class="btn-group" style="margin-bottom:28px">
+                <button class="btn btn-primary" id="btn-save-continue">保存</button>
+                <button class="btn btn-secondary" id="btn-reset-continue">恢复默认</button>
+                <label class="toggle" title="开启后多个视频复用同一 DS 对话">
+                    <input type="checkbox" id="toggle-continue">
+                    <span class="toggle__track"></span>
+                    <span>固定窗口</span>
+                </label>
+                <span class="status-msg" id="status-continue"></span>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="prompt-expert">专家模式</label>
+                <textarea id="prompt-expert"></textarea>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-primary" id="btn-save-expert">保存</button>
+                <button class="btn btn-secondary" id="btn-reset-expert">恢复默认</button>
+                <label class="toggle" title="开启后多个视频复用同一 DS 对话">
+                    <input type="checkbox" id="toggle-expert">
+                    <span class="toggle__track"></span>
+                    <span>固定窗口</span>
+                </label>
+                <span class="status-msg" id="status-expert"></span>
+            </div>
+        </div>
+
+        <div class="section js-section" id="section-docs">
+            <div class="section-heading">操作指南</div>
+            <div class="doc-section">
+                <div style="text-align:center;margin-bottom:28px;">
+                    <img src="teach.gif" alt="使用教程动画" style="max-width:100%;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,0.10);border:1px solid var(--border);">
+                    <p style="font-size:13px;color:var(--text-muted);margin-top:8px;">▲ 扩展使用演示</p>
+                </div>
+                <div style="padding:12px 16px;background:#fff0f3;border-radius:8px;border:1px solid #ffb3c1;color:#8c0032;margin-bottom:24px;font-size:15px;line-height:1.7;">
+                    ⚠️ <strong>使用前提：</strong>本插件需要 <strong>B站网页端</strong> 和 <strong>DeepSeek 网页端（chat.deepseek.com）</strong> 均处于<strong>登录状态</strong>，否则字幕获取或 AI 对话将无法正常工作。
+                </div>
+                <h3>按钮说明</h3>
+                <table>
+                    <tr><th>按钮</th><th>功能</th></tr>
+                    <tr><td>复制字幕</td><td>获取字幕或语音识别后复制到剪切板</td></tr>
+                    <tr><td>齿轮图标</td><td>打开本设置页面（右上角绿钩 = 语音识别已就绪）</td></tr>
+                    <tr><td>复述模式</td><td>完整复述视频内容，转写为流畅文章</td></tr>
+                    <tr><td>快速模式</td><td>简洁中文列出要点，快速了解视频内容</td></tr>
+                    <tr><td>专家模式</td><td>五维度深度分析，自动切换 DS 专家模式</td></tr>
+                </table>
+                <h3>固定窗口</h3>
+                <ul>
+                    <li>开启后多个视频共用同一个 DeepSeek 对话标签页</li>
+                    <li>关闭后每次点击都开启全新对话</li>
+                    <li>每个模式可独立设置</li>
+                </ul>
+                <h3>语音识别</h3>
+                <ul>
+                    <li>视频无字幕时自动启用，需配置 Deepgram API Key</li>
+                    <li>流程：下载音频 → 解码 → Deepgram 中文识别 → 输出 <code>[MM:SS] 文本</code></li>
+                    <li>费用约 <strong>$0.006/分钟</strong>，10 分钟视频 ≈ ¥0.4</li>
+                </ul>
+                <h3>提示词变量</h3>
+                <ul>
+                    <li><code>{{text}}</code> — 字幕全文（含时间戳）</li>
+                    <li>修改后点击保存即时生效</li>
+                    <li>点击「恢复默认」回到初始值</li>
+                </ul>
+                <h3>使用前提</h3>
+                <ul>
+                    <li><strong>B站网页端需保持登录状态</strong>，扩展通过你的登录态获取视频字幕</li>
+                    <li><strong>DeepSeek 网页端需保持登录态</strong>，需在浏览器中已登录 <a href="https://chat.deepseek.com/" target="_blank" rel="noopener">chat.deepseek.com</a></li>
+                </ul>
+                <h3>常见问题</h3>
+                <ul>
+                    <li><strong>复制失败？</strong> 切回视频页再试，确保页面有焦点</li>
+                    <li><strong>识别为空？</strong> 视频无语音时结果为空属正常</li>
+                    <li><strong>下载 403？</strong> 自动尝试备用 CDN 地址</li>
+                    <li><strong>DS 没反应？</strong> 确认已登录 DeepSeek</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- About -->
+        <div class="section js-section" id="section-about">
+            <div class="section-heading">关于</div>
+            <div class="about-section">
+                <div class="about-row">
+                    <span class="about-label">版本</span>
+                    <span class="about-value" id="about-ver">v1.1.0</span>
+                </div>
+                <div class="about-row">
+                    <span class="about-label">GitHub</span>
+                    <a class="about-link" href="https://github.com/Firefulcar1/bilibili-subtitle-copier" target="_blank" rel="noopener">github.com/Firefulcar1/bilibili-subtitle-copier</a>
+                </div>
+                <div class="about-row">
+                    <span class="about-label">更新</span>
+                    <button class="btn btn-secondary" id="btn-update">检查更新</button>
+                    <span class="status-msg" id="status-update"></span>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+</div>
+
+<img class="character" src="Dsloli.png" alt="" aria-hidden="true">
+
+</div>
+
+<script src="options.js"></script>
+<script>
+(function() {
+    var btn = document.getElementById('btn-update');
+    var status = document.getElementById('status-update');
+    if (!btn || !status) return;
+
+    function show(msg, ok) {
+        status.textContent = msg;
+        status.className = 'status-msg status-msg--show status-msg--' + (ok ? 'ok' : 'err');
+        if (ok) setTimeout(function() { status.className = 'status-msg'; }, 3000);
+    }
+
+    btn.addEventListener('click', function() {
+        btn.disabled = true;
+        btn.textContent = '检查中...';
+
+        if (chrome && chrome.runtime && chrome.runtime.requestUpdateCheck) {
+            chrome.runtime.requestUpdateCheck(function(result) {
+                btn.disabled = false;
+                btn.textContent = '检查更新';
+                if (result === 'update_available') {
+                    show('发现新版本，正在自动更新', true);
+                    chrome.runtime.reload();
+                } else if (result === 'no_update') {
+                    show('已是最新版', true);
+                } else if (result === 'throttled') {
+                    show('检查过于频繁，请稍后再试', false);
+                } else {
+                    show('无法检查更新', false);
+                }
+            });
+        } else {
+            btn.disabled = false;
+            btn.textContent = '检查更新';
+            show('当前为开发模式，无法自动检查更新', false);
+        }
+    });
+})();
+</script>
+
+</body>
+</html>
