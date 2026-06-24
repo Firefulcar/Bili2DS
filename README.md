@@ -15,8 +15,8 @@ B 站视频页右侧出现浮动按钮面板：
 
 | 按钮 | 功能 |
 |------|------|
-| 🎀 复制字幕 | 获取字幕（或语音识别后备），一键复制到剪切板 |
-| ⚙ 设置 | 配置 Deepgram API Key 和自定义提示词（右上角绿钩 = 语音识别已就绪） |
+| 复制字幕 | 获取字幕（或语音识别后备），一键复制到剪切板 |
+| 设置 | 配置 Deepgram API Key 和自定义提示词（右上角绿钩 = 语音识别已就绪） |
 | DeepSeek 复述 | AI 完整复述视频内容，转写为流畅书面文章 |
 | 快速模式 | 简洁中文列出核心要点，快速了解视频内容 |
 | 专家模式问询 | 五维度深度分析，自动切换 DS 专家模式 |
@@ -27,14 +27,14 @@ B 站视频页右侧出现浮动按钮面板：
 
 ### 使用前提
 
-- **B 站网页端处于登录状态** — 扩展通过 B 站 API 获取字幕，需要登录 Cookie
-- **DeepSeek 网页端处于登录态** — 扩展通过已登录的 DS 网页完成对话，无需 API Key
+- **B 站网页端处于登录状态** -- 扩展通过 B 站 API 获取字幕，需要登录 Cookie
+- **DeepSeek 网页端处于登录态** -- 扩展通过已登录的 DS 网页完成对话，无需 API Key
 
 ### Chrome / Edge
 
 1. 下载或克隆本项目
    ```bash
-   git clone https://github.com/Firefulcar1/bilibili-subtitle-copier.git
+   git clone https://github.com/Firefulcar/Bili2DS.git
    ```
 2. 打开 `chrome://extensions/`（Chrome）或 `edge://extensions/`（Edge）
 3. 开启 **「开发者模式」**
@@ -43,7 +43,7 @@ B 站视频页右侧出现浮动按钮面板：
 
 ### 配置 Deepgram（可选）
 
-> ⚠️ **这是可选配置。** 绝大多数 B 站视频已有官方 AI 字幕，无需配置此项。只有当视频无字幕时才自动启用语音识别后备。
+> **这是可选配置。** 绝大多数 B 站视频已有官方 AI 字幕，无需配置此项。只有当视频无字幕时才自动启用语音识别后备。
 
 1. 点击齿轮图标进入设置页
 2. 注册 [Deepgram](https://console.deepgram.com/signup)（新用户 $200 免费额度，约 400 小时音频）
@@ -77,11 +77,6 @@ DeepSeek页面 (deepseek.js)
   └─ 读取 storage.local → 填入输入框 → 监听发送按钮 → 自动点击
 ```
 
-## 性能优化
-
-- **零拷贝音频传输：** ArrayBuffer transfer 替代 base64 编解码，内存峰值降低 50%
-- **XPath 精准定位：** 专家模式用浏览器原生 XPath 引擎定位按钮，替代全页 DOM 遍历
-
 ## 隐私
 
 - **所有数据仅保存在本地浏览器**（chrome.storage）
@@ -91,4 +86,4 @@ DeepSeek页面 (deepseek.js)
 
 ## 许可
 
-MIT License — 详见 [LICENSE](LICENSE)
+MIT License -- 详见 [LICENSE](LICENSE)
