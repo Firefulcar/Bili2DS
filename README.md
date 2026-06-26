@@ -1,6 +1,6 @@
-# B站视频 · DS 问询总结助手
+# Bili2DS - B站视频总结插件
 
-> 一键获取 B 站视频字幕（含语音识别后备），发送至 DeepSeek 网页版对话分析。**无需 DeepSeek API Key**。
+> 一款使用 DeepSeek 网页版总结 B 站视频的插件，全部开源免费且无需 API。当 B 站视频没有字幕时，可使用音频转字幕模式进行语音识别（可选）。
 
 [![Manifest](https://img.shields.io/badge/Manifest-V3-blue)](https://developer.chrome.com/docs/extensions/mv3/intro/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)

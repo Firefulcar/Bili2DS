@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Bili2DS",
+  "name": "Bili2DS - B站视频总结插件",
   "version": "1.1.0",
-  "description": "Extract Bilibili video subtitles (with ASR fallback) and send to DeepSeek chat for AI-powered summarization — no API key required.",
+  "description": "一款使用 DeepSeek 网页版总结 B 站视频的插件，全部开源免费且无需 API。当 B 站视频没有字幕时，可使用音频转字幕模式进行语音识别（可选）。",
   "icons": {
     "16": "DSloli2.png",
     "48": "DSloli2.png",

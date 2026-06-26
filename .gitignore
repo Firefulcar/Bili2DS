@@ -1,24 +1,25 @@
-# 渚濊禆
+# 依赖
 node_modules/
 
-# 缂栬緫鍣?.vscode/
+# 编辑器
+.vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# 绯荤粺
+# 系统
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# 鎵撳寘浜х墿
+# 打包产物
 *.zip
 *.crx
 *.pem
 
-# 鏃ュ織
+# 日志
 *.log
 
-# 璋冭瘯
+# 调试
 *.db

@@ -116,15 +116,16 @@
             if (!AudioCtx) throw new Error('AudioContext API 不可用，请使用支持的浏览器');
             ctx = new AudioCtx();
             var audioData = await ctx.decodeAudioData(audioBuffer.slice(0));
-            var channels = audioData.numberOfChannels;
             var duration = audioData.duration;
-            var length = audioData.length;
             var srcSampleRate = audioData.sampleRate;
+            var srcChannels = audioData.numberOfChannels;
             var targetSampleRate = 16000;
 
-            console.log('[B站视频·DS] 解码:', duration.toFixed(1) + 's,', srcSampleRate + 'Hz,', channels + 'ch');
+            console.log('[B站视频·DS] 解码:', duration.toFixed(1) + 's,', srcSampleRate + 'Hz,', srcChannels + 'ch');
 
-            // 重采样到 16kHz mono（ASR 标准采样率）
+            if (duration < 0.5) throw new Error('音频时长过短（' + duration.toFixed(1) + 's），可能下载失败');
+
+            // 重采样到 16kHz mono
             var outLength = Math.ceil(duration * targetSampleRate);
             offlineCtx = new OfflineAudioContext(1, outLength, targetSampleRate);
             var source = offlineCtx.createBufferSource();
@@ -139,16 +140,16 @@
             var int16 = new Int16Array(floatData.length);
             for (var i = 0; i < floatData.length; i++) {
                 var v = floatData[i];
-                var abs = v < 0 ? -v : v;
-                if (abs > peak) peak = abs;
                 var s = v < -1 ? -1 : v > 1 ? 1 : v;
                 int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                var abs = s < 0 ? -s : s;
+                if (abs > peak) peak = abs;
             }
-            console.log('[B站视频·DS] 峰值:', peak.toFixed(4), '重采样: ' + targetSampleRate + 'Hz');
+            console.log('[B站视频·DS] 峰值:', peak.toFixed(4), '重采样: ' + targetSampleRate + 'Hz mono');
             if (peak < 0.001) throw new Error('音频解码后为静音');
 
             console.log('[B站视频·DS] PCM:', (int16.length * 2 / 1024 / 1024).toFixed(2), 'MB,', targetSampleRate + 'Hz');
-            return { buffer: int16.buffer, sampleRate: targetSampleRate, duration: duration };
+            return { buffer: int16.buffer, sampleRate: targetSampleRate, channels: 1, duration: duration };
         } finally {
             if (offlineCtx) { offlineCtx = null; }
             if (ctx) { ctx.close().catch(function() {}); }
@@ -157,7 +158,7 @@
 
     /* ========== ASR Pipeline (REST) ========== */
 
-    function transcribeViaBackground(pcmBuffer, apiKey, sampleRate) {
+    function transcribeViaBackground(pcmBuffer, apiKey, sampleRate, channels) {
         return new Promise(function(resolve, reject) {
             var id = 'asr_' + Date.now();
             var resolved = false;
@@ -178,14 +179,17 @@
             }
             window.addEventListener('message', onResp);
 
-            var sizeMB = (pcmBuffer.byteLength / 1024 / 1024).toFixed(2);
-            console.log('[B站视频·DS] PCM:', sizeMB, 'MB, via ArrayBuffer transfer');
+            // slice(0) 显式拷贝，避免跨世界 transfer 导致 ArrayBuffer 损坏
+            var copy = pcmBuffer.slice(0);
+            var sizeMB = (copy.byteLength / 1024 / 1024).toFixed(2);
+            console.log('[B站视频·DS] PCM:', sizeMB, 'MB,', sampleRate + 'Hz,', (channels || 1) + 'ch');
 
             window.postMessage({
                 type: 'BILIBILI_ASR_REQUEST', id: id,
-                audioData: pcmBuffer, apiKey: apiKey,
-                sampleRate: sampleRate
-            }, '*', [pcmBuffer]); // transfer — 零拷贝，pcmBuffer 所有权转移
+                audioData: copy, apiKey: apiKey,
+                sampleRate: sampleRate,
+                channels: channels || 1
+            }, '*'); // 不用 transfer，用 structured clone 拷贝
         });
     }
 
@@ -218,14 +222,22 @@
 
         reportProgress('encoding', '正在发送 (' + (pcm.buffer.byteLength / 1024 / 1024).toFixed(1) + ' MB)...', 40, '编码中');
         reportProgress('transcribing', '正在语音识别 (' + pcm.duration.toFixed(0) + 's)...', 45, 'Deepgram 识别中');
-        return await transcribeViaBackground(pcm.buffer, apiKey, pcm.sampleRate);
+        return await transcribeViaBackground(pcm.buffer, apiKey, pcm.sampleRate, pcm.channels);
     }
 
     /* ========== Core handler ========== */
 
+    /** 检查字幕/ASR 文本是否有效（非空、非纯时间戳/空白） */
+    function isTextEmpty(text) {
+        if (!text || typeof text !== 'string') return true;
+        var stripped = text.replace(/\[\d{2}:\d{2}\]/g, '').replace(/[\s\r\n]+/g, '').trim();
+        return stripped.length === 0;
+    }
+
     async function handleRequest(onSuccess, enableAsr, apiKey, doneType) {
         try {
             var result = await fetchSubtitles();
+            if (isTextEmpty(result.text)) throw new Error('字幕内容为空');
             onSuccess(result.text);
         } catch (subErr) {
             console.log('[B站视频·DS] 字幕失败:', subErr.message);
@@ -235,6 +247,10 @@
             }
             try {
                 var asr = await transcribeAudio(apiKey);
+                if (isTextEmpty(asr.text)) {
+                    window.postMessage({ type: doneType, success: false, error: '语音识别结果为空，该视频可能无语音或音频异常' }, '*');
+                    return;
+                }
                 onSuccess(asr.text);
             } catch (asrErr) {
                 console.error('[B站视频·DS] ASR 失败:', asrErr.message);
@@ -283,4 +299,78 @@
     });
 
     console.log('[B站视频·DS] 页面脚本就绪 (PCM 模式)');
+
+    /** 调试用：保存当前视频的音频为 WAV 文件。
+     *  在浏览器控制台执行: __biliDumpAudio()
+     *  浏览器会下载一个 .wav 文件，用于后续本地调试 Deepgram 参数。 */
+    window.__biliDumpAudio = async function() {
+        console.log('[Dump] 开始获取音频...');
+        var info = getAudioInfo();
+        if (!info || !info.url) { console.error('[Dump] 无法获取音频流'); return; }
+        console.log('[Dump] 音频 URL:', info.url.substring(0, 80) + '...');
+
+        var resp = await fetch(info.url, { credentials: 'include', headers: { 'Referer': window.location.href } });
+        if (!resp.ok) { console.error('[Dump] 下载失败 HTTP', resp.status); return; }
+        var raw = await resp.arrayBuffer();
+        console.log('[Dump] 下载:', (raw.byteLength / 1024 / 1024).toFixed(2), 'MB');
+
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var audioData = await ctx.decodeAudioData(raw.slice(0));
+        var channels = audioData.numberOfChannels;
+        var sampleRate = audioData.sampleRate;
+        var duration = audioData.duration;
+        console.log('[Dump] 解码:', duration.toFixed(1) + 's,', sampleRate + 'Hz,', channels + 'ch');
+
+        // 合并所有声道为交错 PCM
+        var chanData = [];
+        var samplesPerChan = audioData.length;
+        for (var ch = 0; ch < channels; ch++) {
+            var f = audioData.getChannelData(ch);
+            var i16 = new Int16Array(samplesPerChan);
+            for (var i = 0; i < samplesPerChan; i++) {
+                var s = f[i]; if (s < -1) s = -1; else if (s > 1) s = 1;
+                i16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            chanData.push(i16);
+        }
+        var totalSamples = samplesPerChan * channels;
+        var pcm = new Int16Array(totalSamples);
+        var off = 0;
+        for (var i = 0; i < samplesPerChan; i++) {
+            for (var ch = 0; ch < channels; ch++) {
+                pcm[off++] = chanData[ch][i];
+            }
+        }
+
+        // 写 WAV 头 + PCM 数据
+        var dataSize = pcm.length * 2;
+        var wav = new ArrayBuffer(44 + dataSize);
+        var v = new DataView(wav);
+        function wStr(off, s) { for (var i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); }
+        wStr(0, 'RIFF');
+        v.setUint32(4, 36 + dataSize, true);
+        wStr(8, 'WAVE');
+        wStr(12, 'fmt ');
+        v.setUint32(16, 16, true);        // fmt chunk size
+        v.setUint16(20, 1, true);         // PCM
+        v.setUint16(22, channels, true);
+        v.setUint32(24, sampleRate, true);
+        v.setUint32(28, sampleRate * channels * 2, true);
+        v.setUint16(32, channels * 2, true);
+        v.setUint16(34, 16, true);
+        wStr(36, 'data');
+        v.setUint32(40, dataSize, true);
+        new Uint8Array(wav, 44, dataSize).set(new Uint8Array(pcm.buffer));
+
+        var blob = new Blob([wav], { type: 'audio/wav' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'bilibili_audio_' + sampleRate + 'Hz_' + channels + 'ch.wav';
+        a.click();
+        URL.revokeObjectURL(url);
+        ctx.close();
+        console.log('[Dump] 已触发下载: ' + a.download + ' (' + (wav.byteLength / 1024 / 1024).toFixed(2) + ' MB)');
+        console.log('[Dump] 下一步: 用这个 WAV 文件搭配 test_deepgram.html 调试 Deepgram 参数');
+    };
 })();

@@ -694,31 +694,62 @@ window.addEventListener('message', function(e) {
             break;
 
         case 'BILIBILI_ASR_REQUEST':
+            var asrApiKey = e.data.apiKey;
+            var asrSampleRate = e.data.sampleRate || 44100;
+            var asrChannels = e.data.channels || 1;
+            var asrAudioData = e.data.audioData;
+            var asrMsgId = e.data.id;
+
+            console.log('[B站视频·DS CT] 直接调用 Deepgram, audioData:', (asrAudioData ? (asrAudioData.byteLength / 1024 / 1024).toFixed(2) + 'MB' : 'NULL'), 'sampleRate:', asrSampleRate, 'channels:', asrChannels);
+
             showBubble('正在语音识别...', 0);
             showProgress(45, 'Deepgram 识别中...');
-            var asrMsgId = e.data.id;
-            var asrTimedOut = false;
-            // 防止 Service Worker 终止导致回调永不触发
-            var asrTimer = setTimeout(function() {
-                asrTimedOut = true;
-                window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: '语音识别超时（SW终止）' }, '*');
-            }, 120000); // 2 分钟超时
-            chrome.runtime.sendMessage({
-                type: 'TRANSCRIBE_AUDIO',
-                audioData: e.data.audioData,
-                apiKey: e.data.apiKey,
-                sampleRate: e.data.sampleRate || 44100
-            }, function(result) {
-                if (asrTimedOut) return;
-                clearTimeout(asrTimer);
-                if (chrome.runtime.lastError) {
-                    window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: 'BG通信失败' }, '*');
-                    return;
-                }
-                if (result && result.success) {
+
+            // 直接从 content script 调 Deepgram，不经过 background SW
+            // 避免 chrome.runtime.sendMessage 对大 ArrayBuffer 的 structured clone 截断
+            (async function() {
+                try {
+                    var dgUrl = 'https://api.deepgram.com/v1/listen' +
+                        '?model=nova-3' +
+                        '&language=zh' +
+                        '&encoding=linear16' +
+                        '&sample_rate=' + asrSampleRate +
+                        '&channels=' + asrChannels +
+                        '&smart_format=true' +
+                        '&punctuate=true' +
+                        '&utterances=true';
+
+                    var dgResp = await fetch(dgUrl, {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Token ' + asrApiKey, 'Content-Type': 'application/octet-stream' },
+                        body: asrAudioData
+                    });
+
+                    var dgText = await dgResp.text();
+                    if (!dgResp.ok) {
+                        window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: 'Deepgram HTTP ' + dgResp.status + ': ' + dgText.substring(0, 200) }, '*');
+                        return;
+                    }
+
+                    var dgJson = JSON.parse(dgText);
+                    var dgResults = dgJson.results;
+                    if (!dgResults) { window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: 'Deepgram 无 results' }, '*'); return; }
+                    var dgCh = dgResults.channels;
+                    if (!dgCh || !dgCh.length) { window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: 'Deepgram channels 为空' }, '*'); return; }
+                    var dgAlt = dgCh[0].alternatives && dgCh[0].alternatives[0];
+                    if (!dgAlt) { window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: 'Deepgram alternatives 为空' }, '*'); return; }
+
+                    var dgTranscript = dgAlt.transcript || '';
+                    var dgUtterances = dgResults.utterances || [];
+                    var dgConfidence = dgAlt.confidence;
+                    var dgDetectedLang = (dgCh[0].detected_language) || 'N/A';
+                    var dgDur = (dgJson.metadata && dgJson.metadata.duration) || 0;
+
+                    console.log('[B站视频·DS CT] Deepgram 响应:', dgTranscript.length, '字, confidence:', dgConfidence, ', detected_lang:', dgDetectedLang, ', audio_dur:', dgDur + 's');
+
                     var lines = [];
-                    if (result.utterances && result.utterances.length > 0) {
-                        result.utterances.forEach(function(u) {
+                    if (dgUtterances.length > 0) {
+                        dgUtterances.forEach(function(u) {
                             var t = cleanCJKSpaces(u.transcript || '');
                             if (t.length === 0) return;
                             var m = Math.floor((u.start || 0) / 60);
@@ -726,12 +757,13 @@ window.addEventListener('message', function(e) {
                             lines.push('[' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s + '] ' + t);
                         });
                     }
-                    var txt = lines.length > 0 ? lines.join('\n') : cleanCJKSpaces(result.fullTranscript || '');
+                    var txt = lines.length > 0 ? lines.join('\n') : cleanCJKSpaces(dgTranscript);
                     window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: true, text: txt }, '*');
-                } else {
-                    window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: (result && result.error) || '识别失败' }, '*');
+                } catch (err) {
+                    console.error('[B站视频·DS CT] Deepgram 调用失败:', err.message);
+                    window.postMessage({ type: 'BILIBILI_ASR_RESULT', id: asrMsgId, success: false, error: err.message }, '*');
                 }
-            });
+            })();
             break;
 
         case 'BILIBILI_SUBTITLE_DONE':

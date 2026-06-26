@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deepgram 参数调试</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f9; color: #1a1a2e; padding: 24px; max-width: 960px; margin: 0 auto; }
+h1 { font-size: 22px; margin-bottom: 20px; }
+.section { background: #fff; border: 1px solid #e4e4ec; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; color: #555; }
+input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 10px 14px; border: 1.5px solid #e4e4ec; border-radius: 8px; font-size: 15px; margin-bottom: 12px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+button { padding: 10px 16px; border: 1px solid #ccc; border-radius: 8px; font-size: 14px; cursor: pointer; background: #fff; font-weight: 500; transition: all .15s; }
+button:hover { background: #f0f0f5; }
+button.primary { background: #5b5fef; color: #fff; border-color: #5b5fef; }
+button.primary:hover { background: #4a4edb; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.result { margin-top: 14px; padding: 14px; background: #fafafa; border-radius: 8px; border: 1px solid #eee; font-size: 13px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-family: monospace; }
+.result.good { border-color: #30a46c; background: #f0faf5; }
+.result.bad { border-color: #e5484d; background: #fff5f5; }
+.status { font-size: 13px; color: #888; margin-top: 4px; }
+.file-info { font-size: 13px; color: #666; margin: 4px 0 12px; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+th, td { border: 1px solid #e4e4ec; padding: 8px 12px; text-align: left; }
+th { background: #fafafd; font-weight: 600; }
+td.pass { background: #f0faf5; color: #30a46c; }
+td.fail { background: #fff5f5; color: #e5484d; }
+</style>
+</head>
+<body>
+
+<h1>🔊 Deepgram 参数调试工具</h1>
+
+<div class="section">
+    <label>Deepgram API Key</label>
+    <input type="password" id="apikey" placeholder="输入 Deepgram API Key...">
+</div>
+
+<div class="section">
+    <label>音频文件 (WAV)</label>
+    <input type="file" id="file" accept=".wav,.mp4,.m4a,.aac,.mp3,.flac">
+    <div class="file-info" id="fileInfo"></div>
+</div>
+
+<div class="section">
+    <label>快速诊断 — 一键测试 8 种参数组合</label>
+    <button class="primary" id="btnTestAll" disabled>🚀 全部测试</button>
+    <span class="status" id="statusAll"></span>
+    <table id="resultTable" style="display:none">
+        <thead><tr><th>#</th><th>model</th><th>language</th><th>channels</th><th>transcript</th></tr></thead>
+        <tbody id="resultBody"></tbody>
+    </table>
+</div>
+
+<div class="section">
+    <label>单次测试 — 自定义参数发送 PCM</label>
+    <div class="btn-row">
+        <button id="btnTest1">nova-3 + zh (mono 16k)</button>
+        <button id="btnTest2">nova-3 + zh-CN + detect (orig)</button>
+        <button id="btnTest3">nova-2 + zh (mono 16k)</button>
+        <button id="btnTest4">nova-3 + detect only (orig)</button>
+    </div>
+    <div class="result" id="resultSingle">点击上方按钮开始测试...</div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const apiKey = $('apikey');
+const fileInput = $('file');
+let audioBytes = null, audioSampleRate = 0, audioChannels = 0, audioDuration = 0, wavData = null;
+
+// ─── 文件加载 ───
+fileInput.addEventListener('change', async () => {
+    const f = fileInput.files[0];
+    if (!f) return;
+    wavData = new Uint8Array(await f.arrayBuffer());
+    $('fileInfo').textContent = f.name + ' — ' + (wavData.length / 1024 / 1024).toFixed(2) + ' MB';
+
+    // 解析 WAV 头
+    if (wavData.length < 44) { $('fileInfo').textContent += ' (不是有效的 WAV)'; return; }
+    const v = new DataView(wavData.buffer, wavData.byteOffset, wavData.byteLength);
+    const riff = String.fromCharCode(v.getUint8(0), v.getUint8(1), v.getUint8(2), v.getUint8(3));
+    if (riff !== 'RIFF') { $('fileInfo').textContent += ' (无 RIFF 头, 当作裸 PCM 处理)'; audioSampleRate = 48000; audioChannels = 2; audioBytes = wavData; }
+    else {
+        audioChannels = v.getUint16(22, true);
+        audioSampleRate = v.getUint32(24, true);
+        const dataOff = 44;
+        audioBytes = wavData.slice(dataOff);
+        audioDuration = audioBytes.length / (audioSampleRate * audioChannels * 2);
+    }
+    $('fileInfo').textContent += ' | ' + audioSampleRate + 'Hz, ' + audioChannels + 'ch, ' + audioDuration.toFixed(1) + 's, PCM ' + (audioBytes.length / 1024 / 1024).toFixed(2) + 'MB';
+    $('btnTestAll').disabled = false;
+});
+
+// ─── 核心：调用 Deepgram ───
+async function callDeepgram(pcmData, sampleRate, channels, model, language) {
+    let url = 'https://api.deepgram.com/v1/listen?model=' + model +
+        '&smart_format=true&punctuate=true&utterances=true';
+    if (language) url += '&language=' + language;
+    url += '&encoding=linear16&sample_rate=' + sampleRate + '&channels=' + channels;
+
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Authorization': 'Token ' + apiKey.value.trim(), 'Content-Type': 'application/octet-stream' },
+        body: pcmData
+    });
+    const text = await resp.text();
+    if (!resp.ok) return { error: 'HTTP ' + resp.status + ': ' + text.substring(0, 200) };
+    const j = JSON.parse(text);
+    const alt = (j.results && j.results.channels && j.results.channels[0] && j.results.channels[0].alternatives && j.results.channels[0].alternatives[0]);
+    const transcript = alt ? (alt.transcript || '') : '';
+    const uttCount = (j.results && j.results.utterances) ? j.results.utterances.length : 0;
+    return { transcript: transcript, utterances: uttCount, confidence: alt ? alt.confidence : null };
+}
+
+// ─── 单次测试 ───
+function showResult(el, r) {
+    if (r.error) {
+        el.className = 'result bad';
+        el.textContent = '❌ ' + r.error;
+    } else if (!r.transcript.trim()) {
+        el.className = 'result bad';
+        el.textContent = '⚠️ transcript 为空 (' + r.utterances + ' utterances,' + (r.confidence != null ? ' confidence=' + r.confidence : '') + ')';
+    } else {
+        el.className = 'result good';
+        el.textContent = '✅ ' + r.transcript.length + ' 字, ' + r.utterances + ' utterances:\n' + r.transcript.substring(0, 1000);
+    }
+}
+
+async function singleTest(el, sampleRate, channels, model, language, label) {
+    if (!audioBytes) { el.textContent = '请先选择音频文件'; return; }
+    if (!apiKey.value.trim()) { el.textContent = '请先输入 API Key'; return; }
+    el.className = 'result'; el.textContent = '⏳ 测试中: ' + (label || (model + '/' + language)) + '...';
+    let pcm = audioBytes;
+    // 如果需要降采样到 mono 16k，用 OfflineAudioContext
+    if (sampleRate !== audioSampleRate || channels !== audioChannels) {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const rawAudio = new Uint8Array(audioBytes);
+            const audioBuf = rawAudio.buffer.slice(rawAudio.byteOffset, rawAudio.byteOffset + rawAudio.byteLength);
+            const decoded = await ctx.decodeAudioData(audioBuf);
+            const outLen = Math.ceil(decoded.duration * sampleRate);
+            const offline = new OfflineAudioContext(channels, outLen, sampleRate);
+            const src = offline.createBufferSource();
+            src.buffer = decoded;
+            src.connect(offline.destination);
+            src.start(0);
+            const rendered = await offline.startRendering();
+            const totalLen = rendered.length * channels;
+            const i16 = new Int16Array(totalLen);
+            let off = 0;
+            for (let i = 0; i < rendered.length; i++) {
+                for (let ch = 0; ch < channels; ch++) {
+                    let s = rendered.getChannelData(ch)[i];
+                    if (s < -1) s = -1; else if (s > 1) s = 1;
+                    i16[off++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+            }
+            pcm = new Uint8Array(i16.buffer);
+            ctx.close();
+            console.log('Resampled:', audioSampleRate + 'Hz ' + audioChannels + 'ch →', sampleRate + 'Hz ' + channels + 'ch,', (pcm.length / 1024 / 1024).toFixed(2) + 'MB');
+        } catch(e) { el.className = 'result bad'; el.textContent = '❌ 重采样失败: ' + e.message; return; }
+    }
+    const r = await callDeepgram(pcm, sampleRate, channels, model, language);
+    showResult(el, r);
+    return r;
+}
+
+$('btnTest1').addEventListener('click', () => singleTest($('resultSingle'), 16000, 1, 'nova-3', 'zh', 'nova-3/zh/mono16k'));
+$('btnTest2').addEventListener('click', () => singleTest($('resultSingle'), audioSampleRate, audioChannels, 'nova-3', 'zh-CN', 'nova-3/zh-CN/orig'));
+$('btnTest3').addEventListener('click', () => singleTest($('resultSingle'), 16000, 1, 'nova-2', 'zh', 'nova-2/zh/mono16k'));
+$('btnTest4').addEventListener('click', () => singleTest($('resultSingle'), audioSampleRate, audioChannels, 'nova-3', '', 'nova-3/detect-only/orig'));
+
+// ─── 全部测试 ───
+$('btnTestAll').addEventListener('click', async () => {
+    if (!audioBytes) return;
+    if (!apiKey.value.trim()) return;
+    const btn = $('btnTestAll'); btn.disabled = true;
+    const status = $('statusAll'); status.textContent = '⏳ 测试中...';
+    const body = $('resultBody'); body.innerHTML = '';
+    $('resultTable').style.display = '';
+
+    const tests = [
+        ['nova-3', 'zh-CN', audioChannels, audioSampleRate, '原始声道+采样率, zh-CN'],
+        ['nova-3', 'zh',    audioChannels, audioSampleRate, '原始声道+采样率, zh'],
+        ['nova-3', '',      audioChannels, audioSampleRate, '原始声道+采样率, detect only'],
+        ['nova-3', 'zh-CN', 1,             16000,          'mono 16k, zh-CN'],
+        ['nova-3', 'zh',    1,             16000,          'mono 16k, zh'],
+        ['nova-3', '',      1,             16000,          'mono 16k, detect only'],
+        ['nova-2', 'zh',    audioChannels, audioSampleRate, 'nova-2 orig, zh'],
+        ['nova-2', 'zh',    1,             16000,          'nova-2 mono 16k, zh'],
+    ];
+
+    for (let i = 0; i < tests.length; i++) {
+        const [model, lang, ch, sr, label] = tests[i];
+        status.textContent = '⏳ ' + (i + 1) + '/' + tests.length + ': ' + label + '...';
+        const r = await callDeepgram(
+            ch === audioChannels ? audioBytes : await resampleForTest(sr, ch),
+            sr, ch, model, lang || undefined
+        );
+        const row = body.insertRow();
+        row.insertCell().textContent = i + 1;
+        row.insertCell().textContent = model;
+        row.insertCell().textContent = lang || '(detect)';
+        row.insertCell().textContent = sr + 'Hz ' + ch + 'ch';
+        if (r.error) {
+            const td = row.insertCell(); td.textContent = '❌ ' + r.error; td.className = 'fail';
+        } else if (!r.transcript.trim()) {
+            const td = row.insertCell(); td.textContent = '⚠️ 空 (' + r.utterances + ' utt)'; td.className = 'fail';
+        } else {
+            const td = row.insertCell(); td.textContent = '✅ ' + r.transcript.length + '字, ' + r.utterances + ' utt: ' + r.transcript.substring(0, 80); td.className = 'pass';
+        }
+    }
+    btn.disabled = false;
+    status.textContent = '✅ 完成！共 ' + tests.length + ' 组测试';
+});
+
+async function resampleForTest(sampleRate, channels) {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const rawAudio = new Uint8Array(audioBytes);
+    const buf = rawAudio.buffer.slice(rawAudio.byteOffset, rawAudio.byteOffset + rawAudio.byteLength);
+    const decoded = await ctx.decodeAudioData(buf);
+    const outLen = Math.ceil(decoded.duration * sampleRate);
+    const offline = new OfflineAudioContext(channels, outLen, sampleRate);
+    const src = offline.createBufferSource();
+    src.buffer = decoded;
+    src.connect(offline.destination);
+    src.start(0);
+    const rendered = await offline.startRendering();
+    const totalLen = rendered.length * channels;
+    const i16 = new Int16Array(totalLen);
+    let off = 0;
+    for (let i = 0; i < rendered.length; i++) {
+        for (let ch = 0; ch < channels; ch++) {
+            let s = rendered.getChannelData(ch)[i];
+            if (s < -1) s = -1; else if (s > 1) s = 1;
+            i16[off++] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+    }
+    ctx.close();
+    return new Uint8Array(i16.buffer);
+}
+</script>
+</body>
+</html>
