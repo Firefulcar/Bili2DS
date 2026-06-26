@@ -1,0 +1,4 @@
+{
+  "name": { "message": "Bili2DS - Bilibili Video Summarizer" },
+  "description": { "message": "A free open-source extension that uses DeepSeek web to summarize Bilibili videos. No API key needed. Optional speech-to-text for videos without subtitles." }
+}
