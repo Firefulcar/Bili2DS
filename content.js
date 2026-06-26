@@ -380,6 +380,7 @@ function clampPanelPosition(left, top) {
 
 wrapper.addEventListener('mousedown', function(e) {
     if (e.button !== 0) return;
+    e.preventDefault();
     dragState = 'watching';
     dragStartMouseX = e.clientX;
     dragStartMouseY = e.clientY;
@@ -389,7 +390,14 @@ wrapper.addEventListener('mousedown', function(e) {
 });
 
 document.addEventListener('mousemove', function(e) {
+    // 鼠标按键已松开（如移出窗口后松手再移入），自动取消拖拽
+    if (e.buttons !== 1) {
+        dragState = null;
+        wrapper.classList.remove('bili-sub-btn--dragging');
+        return;
+    }
     if (dragState !== 'watching' && dragState !== 'dragging') return;
+    e.preventDefault();
     var dx = e.clientX - dragStartMouseX;
     var dy = e.clientY - dragStartMouseY;
     if (dragState === 'watching' && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
@@ -407,10 +415,8 @@ document.addEventListener('mousemove', function(e) {
 
 document.addEventListener('mouseup', function() {
     if (dragState === 'dragging') {
-        // 拖拽结束后短暂屏蔽 click，防止误触按钮
         wrapper.classList.add('bili-sub-btn--drag-done');
         setTimeout(function() { wrapper.classList.remove('bili-sub-btn--drag-done'); }, 50);
-        // 保存位置
         chrome.storage.local.set({
             biliPanelLeft: parseInt(wrapper.style.left),
             biliPanelTop: parseInt(wrapper.style.top)
