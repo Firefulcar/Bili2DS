@@ -23,3 +23,6 @@ desktop.ini
 
 # 调试
 *.db
+
+# Playwright MCP 测试残留
+.playwright-mcp/

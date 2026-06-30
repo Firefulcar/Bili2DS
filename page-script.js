@@ -1,6 +1,6 @@
 // ============================================================
 // B站视频·DeepSeek总结 - 页面脚本 (page context)
-// 负责 B站 API + 音频下载 + M4S→PCM 解码 + ASR 请求
+// 负责 B站 API + 音频下载 + ASR 请求（原始 M4S 直发 Deepgram，无需 PCM 解码）
 // ============================================================
 
 (function() {
@@ -10,14 +10,16 @@
     window.__biliSubCopierInjected = true;
 
     var FETCH_TIMEOUT = 15000;
+    var AUDIO_FETCH_TIMEOUT = 120000; // 2 分钟 — 长视频 M4S 可达数百 MB
     var ASR_RESPONSE_TIMEOUT = 180000; // 3 分钟
 
     /* ========== Helpers ========== */
 
-    function fetchWithTimeout(url, opts) {
+    function fetchWithTimeout(url, opts, timeoutMs) {
         opts = opts || {};
+        var t = timeoutMs || FETCH_TIMEOUT;
         var controller = new AbortController();
-        var timer = setTimeout(function() { controller.abort(); }, FETCH_TIMEOUT);
+        var timer = setTimeout(function() { controller.abort(); }, t);
         return fetch(url, Object.assign({}, opts, { signal: controller.signal }))
             .then(function(r) { clearTimeout(timer); return r; })
             .catch(function(e) { clearTimeout(timer); throw e; });
@@ -27,7 +29,22 @@
         try {
             var s = window.__INITIAL_STATE__;
             if (!s || !s.videoData) return null;
-            return { aid: s.videoData.aid, cid: s.videoData.cid, bvid: s.videoData.bvid };
+            var vd = s.videoData;
+            var aid = vd.aid;
+            var cid = vd.cid;
+            var bvid = vd.bvid;
+
+            // 多分P视频：SPA 切换分片时 videoData.cid 可能不更新，
+            // 通过 URL 的 ?p= 参数定位 pages 数组中正确的 cid
+            if (vd.pages && vd.pages.length > 1) {
+                var urlParams = new URLSearchParams(window.location.search);
+                var p = parseInt(urlParams.get('p'), 10);
+                if (p && p >= 1 && p <= vd.pages.length) {
+                    cid = vd.pages[p - 1].cid;
+                }
+            }
+
+            return { aid: aid, cid: cid, bvid: bvid };
         } catch(e) { return null; }
     }
 
@@ -158,7 +175,11 @@
 
     /* ========== ASR Pipeline (REST) ========== */
 
-    function transcribeViaBackground(pcmBuffer, apiKey, sampleRate, channels) {
+    /**
+     * 发送原始音频（M4S/AAC）给 content script，由 content script 直连 Deepgram。
+     * 跳过 PCM 解码，让 Deepgram 自动检测音频格式，避免长视频 PCM 缓冲区爆炸。
+     */
+    function transcribeRawAudio(rawBuffer, apiKey, contentType) {
         return new Promise(function(resolve, reject) {
             var id = 'asr_' + Date.now();
             var resolved = false;
@@ -180,16 +201,16 @@
             window.addEventListener('message', onResp);
 
             // slice(0) 显式拷贝，避免跨世界 transfer 导致 ArrayBuffer 损坏
-            var copy = pcmBuffer.slice(0);
+            var copy = rawBuffer.slice(0);
             var sizeMB = (copy.byteLength / 1024 / 1024).toFixed(2);
-            console.log('[B站视频·DS] PCM:', sizeMB, 'MB,', sampleRate + 'Hz,', (channels || 1) + 'ch');
+            console.log('[B站视频·DS] 发送原始音频:', sizeMB, 'MB, Content-Type:', contentType);
 
             window.postMessage({
                 type: 'BILIBILI_ASR_REQUEST', id: id,
                 audioData: copy, apiKey: apiKey,
-                sampleRate: sampleRate,
-                channels: channels || 1
-            }, '*'); // 不用 transfer，用 structured clone 拷贝
+                rawAudio: true,
+                contentType: contentType
+            }, '*');
         });
     }
 
@@ -207,7 +228,7 @@
                 resp = await fetchWithTimeout(urls[i], {
                     credentials: 'include',
                     headers: { 'Referer': window.location.href }
-                });
+                }, AUDIO_FETCH_TIMEOUT);
                 if (resp.ok) break;
                 lastErr = new Error('HTTP ' + resp.status);
             } catch(e) { lastErr = e; }
@@ -215,14 +236,12 @@
         if (!resp || !resp.ok) throw new Error('下载失败: ' + (lastErr ? lastErr.message : 'unknown'));
 
         var raw = await resp.arrayBuffer();
-        console.log('[B站视频·DS] 下载:', (raw.byteLength / 1024 / 1024).toFixed(2), 'MB');
+        var sizeMB = (raw.byteLength / 1024 / 1024).toFixed(2);
+        console.log('[B站视频·DS] 下载:', sizeMB, 'MB (原始 M4S → 直发 Deepgram，跳过 PCM 解码)');
 
-        reportProgress('decoding', '正在解码音频...', 30, '解码中');
-        var pcm = await decodeToPCM(raw);
-
-        reportProgress('encoding', '正在发送 (' + (pcm.buffer.byteLength / 1024 / 1024).toFixed(1) + ' MB)...', 40, '编码中');
-        reportProgress('transcribing', '正在语音识别 (' + pcm.duration.toFixed(0) + 's)...', 45, 'Deepgram 识别中');
-        return await transcribeViaBackground(pcm.buffer, apiKey, pcm.sampleRate, pcm.channels);
+        reportProgress('transcribing', '正在语音识别 (' + sizeMB + ' MB 原始音频)...', 50, 'Deepgram 识别中');
+        // 直接发送原始 M4S/AAC，让 Deepgram 自动检测格式，避免 PCM 解码的巨大开销
+        return await transcribeRawAudio(raw, apiKey, 'audio/mp4');
     }
 
     /* ========== Core handler ========== */

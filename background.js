@@ -5,10 +5,10 @@
 
 'use strict';
 
-async function transcribeWithDeepgram(audioData, apiKey, sampleRate, channels) {
+async function transcribeWithDeepgram(audioData, apiKey, sampleRate, channels, language) {
     const url = 'https://api.deepgram.com/v1/listen' +
         '?model=nova-3' +
-        '&language=zh' +
+        '&language=' + (language || 'zh') +
         '&encoding=linear16' +
         '&sample_rate=' + (sampleRate || 44100) +
         '&channels=' + (channels || 1) +
@@ -49,10 +49,10 @@ async function transcribeWithDeepgram(audioData, apiKey, sampleRate, channels) {
 }
 
 /** 直接发送原始音频给 Deepgram，不指定 encoding/sample_rate，由 Deepgram 自动检测 */
-async function transcribeRawWithDeepgram(audioData, apiKey, contentType) {
+async function transcribeRawWithDeepgram(audioData, apiKey, contentType, language) {
     const url = 'https://api.deepgram.com/v1/listen' +
         '?model=nova-3' +
-        '&language=zh' +
+        '&language=' + (language || 'zh') +
         '&smart_format=true' +
         '&punctuate=true' +
         '&utterances=true';
@@ -105,12 +105,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message && message.type === 'TRANSCRIBE_AUDIO') {
         if (message.rawAudio) {
             console.log('[B站视频·DS BG] 收到原始音频请求, audioData:', (message.audioData ? (message.audioData.byteLength / 1024 / 1024).toFixed(2) + 'MB' : 'NULL'), 'contentType:', message.contentType);
-            transcribeRawWithDeepgram(message.audioData, message.apiKey, message.contentType)
+            transcribeRawWithDeepgram(message.audioData, message.apiKey, message.contentType, message.language)
                 .then(r => sendResponse(r))
                 .catch(e => sendResponse({ success: false, error: e.message }));
         } else {
             console.log('[B站视频·DS BG] 收到 PCM 请求, audioData:', (message.audioData ? (message.audioData.byteLength / 1024 / 1024).toFixed(2) + 'MB' : 'NULL'), 'sampleRate:', message.sampleRate, 'channels:', message.channels);
-            transcribeWithDeepgram(message.audioData, message.apiKey, message.sampleRate || 44100, message.channels || 1)
+            transcribeWithDeepgram(message.audioData, message.apiKey, message.sampleRate || 44100, message.channels || 1, message.language)
                 .then(r => sendResponse(r))
                 .catch(e => sendResponse({ success: false, error: e.message }));
         }
@@ -127,6 +127,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // 此时显式 reload，确保内容脚本重新运行。
                 if (tab.url === targetUrl || tab.url.replace(/\/$/, '') === targetUrl.replace(/\/$/, '')) {
                     chrome.tabs.reload(tab.id);
+                    // reload 不会自动激活标签页，需要显式 active: true
+                    chrome.tabs.update(tab.id, { active: true });
                 } else {
                     chrome.tabs.update(tab.id, { url: targetUrl, active: true });
                 }
@@ -134,7 +136,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 sendResponse({ existed: true });
             } else {
                 // 没有则新建
-                chrome.tabs.create({ url: targetUrl });
+                chrome.tabs.create({ url: targetUrl, active: true });
                 sendResponse({ existed: false });
             }
         });

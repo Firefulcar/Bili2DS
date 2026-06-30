@@ -69,7 +69,7 @@ B 站视频页右侧出现浮动按钮面板：
 ```
 B站页面 (content.js)
   ├─ 获取字幕 ──→ page-script.js ──→ B站 API
-  │                └─ 字幕失败 ──→ 下载音频 → M4S解码 → Deepgram ASR
+  │                └─ 字幕失败 ──→ 下载音频 → 原始 M4S 直发 Deepgram ASR
   ├─ 复制 ──→ clipboard API
   └─ 发送 DS ──→ storage.local ──→ 切到/打开 DeepSeek 标签页
                                          ↓

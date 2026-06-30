@@ -290,6 +290,42 @@ style.textContent = `
     to   { transform: scale(1); opacity: 1; }
 }
 
+/* ── 复制按钮容器 ── */
+.bili-sub-btn__copy-wrap {
+    position: relative;
+    display: inline-flex;
+}
+/* ── 语言切换徽章（复制按钮右上角）── */
+.bili-sub-btn__lang-badge {
+    position: absolute;
+    top: -4px; right: -4px;
+    min-width: 20px; height: 20px;
+    border-radius: 10px;
+    background: #fff;
+    border: 2px solid rgba(0,0,0,0.45);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    color: #333;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.20);
+    transition: transform 0.15s, background 0.15s;
+    z-index: 1;
+    user-select: none;
+}
+.bili-sub-btn__lang-badge:hover {
+    transform: scale(1.15);
+    background: #f0f0f0;
+}
+.bili-sub-btn__lang-badge--on {
+    display: flex;
+    animation: bili-badge-pop 0.35s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+
 .bili-sub-btn__progress-wrap {
     width: 100%; height: 4px;
     background: rgba(255,255,255,0.12);
@@ -329,9 +365,12 @@ wrapper.innerHTML = `
     <div class="bili-sub-btn__progress-label" id="bili-progress-label"></div>
 </div>
 <div class="bili-sub-btn__row">
-    <button class="bili-sub-btn__main bili-sub-btn__copy" id="bili-sub-btn-copy" title="复制字幕">
-        <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-    </button>
+    <div class="bili-sub-btn__copy-wrap">
+        <button class="bili-sub-btn__main bili-sub-btn__copy" id="bili-sub-btn-copy" title="复制字幕">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+        </button>
+        <div class="bili-sub-btn__lang-badge" id="bili-sub-lang-badge" title="ASR 识别语言：中文 | 点击切换">CN</div>
+    </div>
     <div class="bili-sub-btn__settings-wrap">
         <button class="bili-sub-btn__main bili-sub-btn__settings" id="bili-sub-btn-settings" title="设置 API Key 和提示词">
             <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.488.488 0 00-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -433,6 +472,7 @@ const btnDSExpert = wrapper.querySelector('#bili-sub-btn-ds-expert');
 const btnDSRetell = wrapper.querySelector('#bili-sub-btn-ds-retell');
 const btnSettings = wrapper.querySelector('#bili-sub-btn-settings');
 const asrBadge = wrapper.querySelector('#bili-sub-asr-badge');
+const langBadge = wrapper.querySelector('#bili-sub-lang-badge');
 const progressWrap = wrapper.querySelector('#bili-progress-wrap');
 const progressBar = wrapper.querySelector('#bili-progress-bar');
 const progressLabel = wrapper.querySelector('#bili-progress-label');
@@ -489,6 +529,7 @@ injectPageScript();
 // ─── API Key cache（监听 storage 变化实时刷新）───
 let cachedApiKey = null;
 let cachedEnableAsr = false;
+var cachedAsrLanguage = 'zh';
 // 固定窗口默认值：复述/快速 开，专家 关
 var cachedFixedWindow = { retell: true, quick: true, expert: false };
 
@@ -571,12 +612,13 @@ function loadSettings(callback) {
         return;
     }
     loadSettingsPending = [callback];
-    chrome.storage.sync.get(['deepgramApiKey', 'promptContinue', 'promptExpert', 'promptRetell', 'fixedWindowRetell', 'fixedWindowQuick', 'fixedWindowExpert'], function(data) {
+    chrome.storage.sync.get(['deepgramApiKey', 'asrLanguage', 'promptContinue', 'promptExpert', 'promptRetell', 'fixedWindowRetell', 'fixedWindowQuick', 'fixedWindowExpert'], function(data) {
         if (chrome.runtime.lastError) {
             console.warn('[B站视频·DS] storage.sync.get error:', chrome.runtime.lastError.message);
         }
         cachedApiKey = data.deepgramApiKey || '';
         cachedEnableAsr = cachedApiKey.length > 0;
+        cachedAsrLanguage = data.asrLanguage || 'zh';
         cachedPrompts = {
             continue: data.promptContinue || DEFAULTS.promptContinue,
             expert: data.promptExpert || DEFAULTS.promptExpert,
@@ -603,6 +645,10 @@ chrome.storage.onChanged.addListener(function(changes, area) {
             cachedApiKey = changes.deepgramApiKey.newValue || '';
             cachedEnableAsr = cachedApiKey.length > 0;
             updateAsrIndicator();
+        }
+        if (changes.asrLanguage) {
+            cachedAsrLanguage = changes.asrLanguage.newValue || 'zh';
+            updateLangBadge();
         }
         if (changes.promptContinue) {
             if (!cachedPrompts) cachedPrompts = {};
@@ -633,10 +679,19 @@ function updateAsrIndicator() {
     if (cachedEnableAsr) {
         asrBadge.classList.add('bili-sub-btn__asr-badge--on');
         asrBadge.title = '语音识别已配置 ✓';
+        // 显示语言切换徽章
+        updateLangBadge();
+        langBadge.classList.add('bili-sub-btn__lang-badge--on');
     } else {
         asrBadge.classList.remove('bili-sub-btn__asr-badge--on');
         asrBadge.title = '语音识别未配置 — 点击齿轮设置 API Key';
+        langBadge.classList.remove('bili-sub-btn__lang-badge--on');
     }
+}
+function updateLangBadge() {
+    var label = cachedAsrLanguage === 'en' ? 'EN' : 'CN';
+    langBadge.textContent = label;
+    langBadge.title = 'ASR 识别语言：' + (cachedAsrLanguage === 'en' ? 'English' : '中文') + ' | 点击切换';
 }
 loadSettings(function() {});
 
@@ -701,33 +756,52 @@ window.addEventListener('message', function(e) {
 
         case 'BILIBILI_ASR_REQUEST':
             var asrApiKey = e.data.apiKey;
-            var asrSampleRate = e.data.sampleRate || 44100;
-            var asrChannels = e.data.channels || 1;
             var asrAudioData = e.data.audioData;
             var asrMsgId = e.data.id;
+            var asrRawAudio = e.data.rawAudio === true;
+            var asrContentType = e.data.contentType || 'audio/mp4';
 
-            console.log('[B站视频·DS CT] 直接调用 Deepgram, audioData:', (asrAudioData ? (asrAudioData.byteLength / 1024 / 1024).toFixed(2) + 'MB' : 'NULL'), 'sampleRate:', asrSampleRate, 'channels:', asrChannels);
+            console.log('[B站视频·DS CT] 直接调用 Deepgram, audioData:', (asrAudioData ? (asrAudioData.byteLength / 1024 / 1024).toFixed(2) + 'MB' : 'NULL'), 'rawAudio:', asrRawAudio, 'contentType:', asrContentType);
 
             showBubble('正在语音识别...', 0);
-            showProgress(45, 'Deepgram 识别中...');
+            showProgress(50, 'Deepgram 识别中...');
 
             // 直接从 content script 调 Deepgram，不经过 background SW
             // 避免 chrome.runtime.sendMessage 对大 ArrayBuffer 的 structured clone 截断
             (async function() {
                 try {
-                    var dgUrl = 'https://api.deepgram.com/v1/listen' +
-                        '?model=nova-3' +
-                        '&language=zh' +
-                        '&encoding=linear16' +
-                        '&sample_rate=' + asrSampleRate +
-                        '&channels=' + asrChannels +
-                        '&smart_format=true' +
-                        '&punctuate=true' +
-                        '&utterances=true';
+                    var dgUrl;
+                    var dgHeaders;
+
+                    if (asrRawAudio) {
+                        // 原始音频路径：发送 M4S/AAC 等，让 Deepgram 自动检测格式
+                        // 不指定 encoding/sample_rate/channels，大幅减少数据量
+                        dgUrl = 'https://api.deepgram.com/v1/listen' +
+                            '?model=nova-3' +
+                            '&language=' + cachedAsrLanguage +
+                            '&smart_format=true' +
+                            '&punctuate=true' +
+                            '&utterances=true';
+                        dgHeaders = { 'Authorization': 'Token ' + asrApiKey, 'Content-Type': asrContentType };
+                    } else {
+                        // 兼容旧 PCM 路径
+                        var asrSampleRate = e.data.sampleRate || 44100;
+                        var asrChannels = e.data.channels || 1;
+                        dgUrl = 'https://api.deepgram.com/v1/listen' +
+                            '?model=nova-3' +
+                            '&language=' + cachedAsrLanguage +
+                            '&encoding=linear16' +
+                            '&sample_rate=' + asrSampleRate +
+                            '&channels=' + asrChannels +
+                            '&smart_format=true' +
+                            '&punctuate=true' +
+                            '&utterances=true';
+                        dgHeaders = { 'Authorization': 'Token ' + asrApiKey, 'Content-Type': 'application/octet-stream' };
+                    }
 
                     var dgResp = await fetch(dgUrl, {
                         method: 'POST',
-                        headers: { 'Authorization': 'Token ' + asrApiKey, 'Content-Type': 'application/octet-stream' },
+                        headers: dgHeaders,
                         body: asrAudioData
                     });
 
@@ -910,4 +984,12 @@ btnDSRetell.addEventListener('click', function() {
 btnSettings.addEventListener('click', function() {
     if (loading) return;
     chrome.runtime.sendMessage({ type: 'OPEN_OPTIONS' });
+});
+
+langBadge.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (loading) return;
+    cachedAsrLanguage = cachedAsrLanguage === 'en' ? 'zh' : 'en';
+    updateLangBadge();
+    chrome.storage.sync.set({ asrLanguage: cachedAsrLanguage });
 });
